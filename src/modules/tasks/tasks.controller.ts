@@ -106,7 +106,7 @@ export class TasksController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a task' })
   async remove(@Param('id') id: string) {
-    const task = this.tasksService.findOne(id);
+    const task = await this.tasksService.findOne(id);
     if (!task) {
       throw new NotFoundException('Task not found');
     }

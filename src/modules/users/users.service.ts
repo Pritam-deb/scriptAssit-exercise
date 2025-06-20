@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -11,46 +11,95 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) {}
+  ) { }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = this.usersRepository.create({
-      ...createUserDto,
-      password: hashedPassword,
-    });
-    return this.usersRepository.save(user);
+    try {
+      const existingUser = await this.usersRepository.findOne({
+        where: { email: createUserDto.email },
+      });
+      if (existingUser) {
+        throw new Error('A user with this email already exists');
+      }
+
+      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+      const user = this.usersRepository.create({
+        ...createUserDto,
+        password: hashedPassword,
+      });
+      return await this.usersRepository.save(user);
+    } catch (error) {
+      console.error('Failed to create user:', error);
+      throw error;
+    }
   }
 
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find();
+  async findAll(currentPage: number, pageSize: number): Promise<User[]> {
+    try {
+      return await this.usersRepository.find({
+        skip: (currentPage - 1) * pageSize,
+        take: pageSize,
+        order: { createdAt: 'DESC' },
+      });
+    } catch (error) {
+      console.error('Failed to retrieve users:', error);
+      throw new InternalServerErrorException('Could not retrieve user list');
+    }
   }
 
   async findOne(id: string): Promise<User> {
-    const user = await this.usersRepository.findOne({ where: { id } });
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+    try {
+      const user = await this.usersRepository.findOne({ where: { id } });
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+      return user;
+    } catch (error) {
+      console.error('Failed to find user:', error);
+      throw error instanceof NotFoundException ? error : new Error('Could not fetch user');
     }
-    return user;
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    try {
+      return await this.usersRepository.findOne({ where: { email } });
+    } catch (error) {
+      console.error(`Failed to find user by email: ${email}`, error);
+      throw new Error('Could not fetch user by email');
+    }
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
-    const user = await this.findOne(id);
-    
-    if (updateUserDto.password) {
-      updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+    try {
+      const user = await this.ensureUserExists(id);
+
+      if (updateUserDto.password) {
+        updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+      }
+
+      this.usersRepository.merge(user, updateUserDto);
+      return await this.usersRepository.save(user);
+    } catch (error) {
+      console.error(`Failed to update user:`, error);
+      throw error instanceof NotFoundException ? error : new Error('Could not update user');
     }
-    
-    this.usersRepository.merge(user, updateUserDto);
-    return this.usersRepository.save(user);
   }
 
   async remove(id: string): Promise<void> {
-    const user = await this.findOne(id);
-    await this.usersRepository.remove(user);
+    try {
+      const result = await this.usersRepository.delete({ id });
+      if (result.affected === 0) {
+        throw new NotFoundException('User not found');
+      }
+    } catch (error) {
+      console.error(`Failed to delete user:`, error);
+      throw error instanceof NotFoundException ? error : new Error('Could not delete user');
+    }
   }
-} 
+
+  private async ensureUserExists(id: string): Promise<User> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+}
