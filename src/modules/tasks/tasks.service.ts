@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, LessThan, Not } from 'typeorm';
 import { Task } from './entities/task.entity';
@@ -34,7 +34,7 @@ export class TasksService {
       return savedTask;
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('Failed to enqueue task status update:', err);
+      Logger.error('Failed to enqueue task status update:', err);
       throw err;
     } finally {
       await queryRunner.release();
@@ -154,7 +154,7 @@ export class TasksService {
       return updatedTask;
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('Failed to update task or enqueue status update:', err);
+      Logger.error('Failed to update task or enqueue status update:', err);
       throw err;
     } finally {
       await queryRunner.release();
@@ -183,7 +183,7 @@ export class TasksService {
       return updatedTasks;
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('Failed to bulk update task statuses:', err);
+      Logger.error('Failed to bulk update task statuses:', err);
       throw err;
     } finally {
       await queryRunner.release();
@@ -203,7 +203,7 @@ export class TasksService {
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
-      console.error('Failed to bulk delete tasks:', err);
+      Logger.error('Failed to bulk delete tasks:', err);
       throw err;
     } finally {
       await queryRunner.release();
@@ -241,7 +241,7 @@ export class TasksService {
         relations: ['user'],
       });
     } catch (error) {
-      console.error('Error fetching overdue tasks', error);
+      Logger.error('Error fetching overdue tasks', error);
       throw new Error('Failed to fetch overdue tasks');
     }
   }
@@ -250,7 +250,7 @@ export class TasksService {
     if (overdueTasks.length > 0) {
       console.log(`Notifying about ${overdueTasks.length} overdue tasks.`);
     } else {
-      console.log('No overdue tasks to notify.');
+      Logger.error('No overdue tasks to notify.');
     }
   }
 }

@@ -14,6 +14,7 @@ import {
   Query,
   Request,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -46,9 +47,14 @@ export class UsersController {
     required: false,
     description: 'CreatedAt timestamp of the last item from previous page',
   })
-  findAll(@Query('cursor') cursor?: string, @Query('limit') limit?: number) {
-    const pageSize = limit ? parseInt(limit as any, 10) : 10;
-    return this.usersService.findAll(pageSize, cursor);
+  async findAll(@Query('cursor') cursor?: string, @Query('limit') limit?: number) {
+    try {
+      const pageSize = limit ? parseInt(limit as any, 10) : 10;
+      return await this.usersService.findAll(pageSize, cursor);
+    } catch (error) {
+      Logger.error('Failed to retrieve users:', error);
+      throw new NotFoundException('Failed to retrieve users');
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -104,7 +110,8 @@ export class UsersController {
         message: 'User deleted successfully',
       };
     } catch (error) {
-      throw new NotFoundException(error instanceof Error ? error.message : 'Failed to delete user');
+      Logger.error(`Failed to delete user with ID ${id}:`, error);
+      throw new NotFoundException('Failed to delete user');
     }
   }
 }
