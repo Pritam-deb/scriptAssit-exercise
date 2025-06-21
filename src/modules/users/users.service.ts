@@ -34,14 +34,18 @@ export class UsersService {
     }
   }
 
-  async findAll(currentPage: number, pageSize: number): Promise<User[]> {
+  async findAll(limit: number, afterCursor?: string): Promise<User[]> {
     try {
-      return await this.usersRepository
+      const query = this.usersRepository
         .createQueryBuilder('user')
         .orderBy('user.createdAt', 'DESC')
-        .skip((currentPage - 1) * pageSize)
-        .take(pageSize)
-        .getMany();
+        .limit(limit);
+
+      if (afterCursor) {
+        query.where('user.createdAt < :afterCursor', { afterCursor });
+      }
+
+      return await query.getMany();
     } catch (error) {
       console.error('Failed to retrieve users:', error);
       throw new InternalServerErrorException('Could not retrieve user list');

@@ -46,29 +46,31 @@ export class TasksController {
   @ApiOperation({ summary: 'Find all tasks with optional filtering' })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'priority', required: false })
-  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'CreatedAt timestamp of the last item from previous page',
+  })
   @ApiQuery({ name: 'limit', required: false })
   async findAll(
     @Request() req: Request,
     @Query('status') status?: string,
     @Query('priority') priority?: string,
-    @Query('page') page?: number,
+    @Query('cursor') cursor?: string,
     @Query('limit') limit?: number,
   ) {
-    const currentPage = page ? parseInt(page as any, 10) : 1;
-    const pageSize = limit ? parseInt(limit as any, 10) : 10;
+    const pageSize = Math.min(limit ? parseInt(limit as any, 10) : 10, 100);
     const userId = (req as any).user.id;
     const filter: TaskFilterDto = {
       status: status as TaskStatus,
       priority: priority as TaskPriority,
     };
 
-    const tasks = await this.tasksService.findAll(userId, currentPage, pageSize, filter);
+    const tasks = await this.tasksService.findAll(userId, cursor, pageSize, filter);
 
     return {
       data: tasks,
       count: tasks.length,
-      page: currentPage,
       limit: pageSize,
     };
   }

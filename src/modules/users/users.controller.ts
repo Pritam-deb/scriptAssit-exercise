@@ -34,12 +34,15 @@ export class UsersController {
   @ApiBearerAuth()
   @Get()
   @ApiOperation({ summary: 'Find all users' })
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'limit', required: false })
-  findAll(@Query('page') page?: number, @Query('limit') limit?: number) {
-    const currentPage = page ? parseInt(page as any, 10) : 1;
+  @ApiQuery({ name: 'cursor', required: false })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'CreatedAt timestamp of the last item from previous page',
+  })
+  findAll(@Query('cursor') cursor?: string, @Query('limit') limit?: number) {
     const pageSize = limit ? parseInt(limit as any, 10) : 10;
-    return this.usersService.findAll(currentPage, pageSize);
+    return this.usersService.findAll(pageSize, cursor);
   }
 
   @UseGuards(JwtAuthGuard)

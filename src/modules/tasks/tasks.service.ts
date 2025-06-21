@@ -45,7 +45,7 @@ export class TasksService {
 
   async findAll(
     userId: string,
-    currentPage: number,
+    cursor: string | undefined,
     pageSize: number,
     filter: TaskFilterDto,
   ): Promise<Task[]> {
@@ -64,8 +64,12 @@ export class TasksService {
       .createQueryBuilder('task')
       .leftJoinAndSelect('task.user', 'user')
       .where('task.userId = :userId', { userId })
-      .skip((currentPage - 1) * pageSize)
+      .orderBy('task.createdAt', 'DESC')
       .take(pageSize);
+
+    if (cursor) {
+      query.andWhere('task.createdAt < :cursor', { cursor });
+    }
 
     if (filter.status) {
       query.andWhere('task.status = :status', { status: filter.status });
