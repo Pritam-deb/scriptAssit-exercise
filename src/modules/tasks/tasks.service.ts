@@ -8,6 +8,7 @@ import { TaskFilterDto } from './dto/task-filter.dto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
+import { LessThan, Not } from 'typeorm';
 
 @Injectable()
 export class TasksService {
@@ -212,5 +213,29 @@ export class TasksService {
     const task = await this.findOne(id);
     task.status = status as any;
     return this.tasksRepository.save(task);
+  }
+
+  async getOverdueTasks(): Promise<Task[]> {
+    try {
+      const now = new Date();
+      return await this.tasksRepository.find({
+        where: {
+          dueDate: LessThan(now),
+          status: Not(TaskStatus.COMPLETED),
+        },
+        relations: ['user'],
+      });
+    } catch (error) {
+      console.error('Error fetching overdue tasks', error);
+      throw new Error('Failed to fetch overdue tasks');
+    }
+  }
+  async notifyOverdueTasks(): Promise<void> {
+    const overdueTasks = await this.getOverdueTasks();
+    if (overdueTasks.length > 0) {
+      console.log(`Notifying about ${overdueTasks.length} overdue tasks.`);
+    } else {
+      console.log('No overdue tasks to notify.');
+    }
   }
 }
