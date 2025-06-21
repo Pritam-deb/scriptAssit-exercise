@@ -23,6 +23,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Roles } from '@common/decorators/roles.decorator';
 import { RolesGuard } from '@common/guards/roles.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('users')
 @Controller('users')
@@ -40,6 +41,7 @@ export class UsersController {
   @Roles('admin')
   @ApiBearerAuth()
   @Get()
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Find all users' })
   @ApiQuery({ name: 'cursor', required: false })
   @ApiQuery({
@@ -60,6 +62,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get(':id')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Get a user with ID' })
   async findOne(@Param('id') id: string, @Request() req: any) {
     const user = await this.usersService.findOne(id);
@@ -77,6 +80,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Patch(':id')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Update a user with ID' })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: any) {
     const user = await this.usersService.findOne(id);
@@ -94,6 +98,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Delete(':id')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Delete a user' })
   async remove(@Param('id') id: string, @Request() req: any) {
     try {
