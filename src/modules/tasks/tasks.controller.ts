@@ -27,6 +27,7 @@ import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { TaskFilterDto } from './dto/task-filter.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -37,12 +38,14 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) { }
 
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Create a new task' })
   create(@Body() createTaskDto: CreateTaskDto) {
     return this.tasksService.create(createTaskDto);
   }
 
   @Get()
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Find all tasks with optional filtering' })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'priority', required: false })
@@ -76,6 +79,7 @@ export class TasksController {
   }
 
   @Get('stats')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Get task statistics' })
   async getStats(@Request() req: Request) {
     const userId = (req as any).user.id;
@@ -84,6 +88,7 @@ export class TasksController {
   }
 
   @Get(':id')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Find a task by ID' })
   async findOne(@Param('id') id: string, @Request() req: Request) {
     const task = await this.tasksService.findOne(id);
@@ -100,6 +105,7 @@ export class TasksController {
   }
 
   @Patch(':id')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Update a task' })
   async update(
     @Param('id') id: string,
@@ -120,6 +126,7 @@ export class TasksController {
   }
 
   @Delete(':id')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Delete a task' })
   async remove(@Param('id') id: string, @Request() req: Request) {
     const task = await this.tasksService.findOne(id);
@@ -140,6 +147,7 @@ export class TasksController {
   }
 
   @Post('batch')
+  @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Batch process multiple tasks' })
   async batchProcess(@Body() operations: { tasks: string[]; action: string }) {
     const { tasks: taskIds, action } = operations;
