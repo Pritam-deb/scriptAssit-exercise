@@ -1,4 +1,12 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { Task } from '../../tasks/entities/task.entity';
 import { Exclude } from 'class-transformer';
 
@@ -7,6 +15,7 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column({ unique: true })
   email: string;
 
@@ -17,10 +26,11 @@ export class User {
   @Exclude({ toPlainOnly: true })
   password: string;
 
+  @Index()
   @Column({ default: 'user' })
   role: string;
 
-  @OneToMany(() => Task, (task) => task.user)
+  @OneToMany(() => Task, task => task.user)
   tasks: Task[];
 
   @CreateDateColumn({ name: 'created_at' })
@@ -28,4 +38,4 @@ export class User {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
-} 
+}
