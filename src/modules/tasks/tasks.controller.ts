@@ -85,11 +85,15 @@ export class TasksController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Find a task by ID' })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: Request) {
     const task = await this.tasksService.findOne(id);
 
     if (!task) {
       throw new NotFoundException('Task not found');
+    }
+
+    if ((req as any).user.role !== 'admin' && task.user.id !== (req as any).user.id) {
+      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 
     return task;
@@ -97,21 +101,37 @@ export class TasksController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a task' })
-  update(@Param('id') id: string, @Body() updateTaskDto: UpdateTaskDto) {
-    const task = this.tasksService.findOne(id);
+  async update(
+    @Param('id') id: string,
+    @Body() updateTaskDto: UpdateTaskDto,
+    @Request() req: Request,
+  ) {
+    const task = await this.tasksService.findOne(id);
+
     if (!task) {
       throw new NotFoundException('Task not found');
     }
+
+    if ((req as any).user.role !== 'admin' && task.user.id !== (req as any).user.id) {
+      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+    }
+
     return this.tasksService.update(id, updateTaskDto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a task' })
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Request() req: Request) {
     const task = await this.tasksService.findOne(id);
+
     if (!task) {
       throw new NotFoundException('Task not found');
     }
+
+    if ((req as any).user.role !== 'admin' && task.user.id !== (req as any).user.id) {
+      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+    }
+
     await this.tasksService.remove(id);
     return {
       statusCode: HttpStatus.OK,

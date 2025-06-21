@@ -12,12 +12,16 @@ import {
   NotFoundException,
   HttpStatus,
   Query,
+  Request,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Roles } from '@common/decorators/roles.decorator';
+import { RolesGuard } from '@common/guards/roles.guard';
 
 @ApiTags('users')
 @Controller('users')
@@ -26,11 +30,13 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
   @Post()
+  @ApiOperation({ summary: 'Create a new user' })
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @ApiBearerAuth()
   @Get()
   @ApiOperation({ summary: 'Find all users' })
@@ -49,11 +55,16 @@ export class UsersController {
   @ApiBearerAuth()
   @Get(':id')
   @ApiOperation({ summary: 'Get a user with ID' })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Request() req: any) {
     const user = await this.usersService.findOne(id);
     if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    if (req.user.role !== 'admin' && req.user.id !== id) {
+      throw new ForbiddenException('You are not authorized to access this user');
+    }
+
     return user;
   }
 
@@ -61,11 +72,16 @@ export class UsersController {
   @ApiBearerAuth()
   @Patch(':id')
   @ApiOperation({ summary: 'Update a user with ID' })
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    const user = this.usersService.findOne(id);
+  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Request() req: any) {
+    const user = await this.usersService.findOne(id);
     if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    if (req.user.role !== 'admin' && req.user.id !== id) {
+      throw new ForbiddenException('You are not authorized to update this user');
+    }
+
     return this.usersService.update(id, updateUserDto);
   }
 
@@ -73,11 +89,14 @@ export class UsersController {
   @ApiBearerAuth()
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a user' })
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Request() req: any) {
     try {
       const user = await this.usersService.findOne(id);
       if (!user) {
         throw new NotFoundException('User not found');
+      }
+      if (req.user.role !== 'admin' && req.user.id !== id) {
+        throw new ForbiddenException('You are not authorized to delete this user');
       }
       await this.usersService.remove(id);
       return {
