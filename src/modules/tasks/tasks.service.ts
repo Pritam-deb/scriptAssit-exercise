@@ -24,7 +24,7 @@ export class TasksService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      const task = this.tasksRepository.create(createTaskDto);
+      const task = await this.tasksRepository.create(createTaskDto);
       const savedTask = await queryRunner.manager.save(task);
 
       await this.taskQueue.add('task-status-update', {
@@ -89,15 +89,19 @@ export class TasksService {
       });
     }
 
-    return query.getMany();
+    return await query.getMany();
   }
 
   async getAllTasks(): Promise<Task[]> {
-    return this.tasksRepository.find();
+    return await this.tasksRepository
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.user', 'user')
+      .orderBy('task.createdAt', 'DESC')
+      .getMany();
   }
 
   async getTaskStats() {
-    return this.tasksRepository
+    return await this.tasksRepository
       .createQueryBuilder('task')
       .select([
         'COUNT(*) as total',
@@ -204,15 +208,23 @@ export class TasksService {
   }
 
   async findByStatus(status: TaskStatus): Promise<Task[]> {
-    return this.tasksRepository.find({
-      where: { status },
-    });
+    return await this.tasksRepository
+      .createQueryBuilder('task')
+      .leftJoinAndSelect('task.user', 'user')
+      .where('task.status = :status', { status })
+      .orderBy('task.createdAt', 'DESC')
+      .getMany();
   }
 
   async applyStatusUpdateFromQueue(id: string, status: string): Promise<Task> {
-    const task = await this.findOne(id);
-    task.status = status as any;
-    return this.tasksRepository.save(task);
+    await this.tasksRepository
+      .createQueryBuilder()
+      .update(Task)
+      .set({ status: status as any })
+      .where('id = :id', { id })
+      .execute();
+
+    return await this.findOne(id);
   }
 
   async getOverdueTasks(): Promise<Task[]> {

@@ -36,11 +36,12 @@ export class UsersService {
 
   async findAll(currentPage: number, pageSize: number): Promise<User[]> {
     try {
-      return await this.usersRepository.find({
-        skip: (currentPage - 1) * pageSize,
-        take: pageSize,
-        order: { createdAt: 'DESC' },
-      });
+      return await this.usersRepository
+        .createQueryBuilder('user')
+        .orderBy('user.createdAt', 'DESC')
+        .skip((currentPage - 1) * pageSize)
+        .take(pageSize)
+        .getMany();
     } catch (error) {
       console.error('Failed to retrieve users:', error);
       throw new InternalServerErrorException('Could not retrieve user list');
@@ -99,7 +100,9 @@ export class UsersService {
 
   private async ensureUserExists(id: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
     return user;
   }
 }
