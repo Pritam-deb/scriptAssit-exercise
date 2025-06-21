@@ -1,7 +1,10 @@
 import {
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -36,8 +39,8 @@ export class UsersService {
       const user = this.usersRepository.create(createUserDto);
       return await this.usersRepository.save(user);
     } catch (error) {
-      console.error('Failed to create user:', error);
-      throw error;
+      Logger.error('Failed to create user:', error);
+      throw new HttpException('Something went wrong', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -54,7 +57,7 @@ export class UsersService {
 
       return await query.getMany();
     } catch (error) {
-      console.error('Failed to retrieve users:', error);
+      Logger.error('Failed to retrieve users:', error);
       throw new InternalServerErrorException('Could not retrieve user list');
     }
   }
@@ -67,8 +70,8 @@ export class UsersService {
       }
       return user;
     } catch (error) {
-      console.error('Failed to find user:', error);
-      throw error instanceof NotFoundException ? error : new Error('Could not fetch user');
+      Logger.error('Failed to find user:', error);
+      throw new HttpException('Could not find user', HttpStatus.NOT_FOUND);
     }
   }
 
@@ -76,8 +79,8 @@ export class UsersService {
     try {
       return await this.usersRepository.findOne({ where: { email } });
     } catch (error) {
-      console.error(`Failed to find user by email: ${email}`, error);
-      throw new Error('Could not fetch user by email');
+      Logger.error(`Failed to find user by email: ${email}`, error);
+      throw new HttpException('Could not find user', HttpStatus.NOT_FOUND);
     }
   }
 
@@ -93,8 +96,8 @@ export class UsersService {
       this.usersRepository.merge(user, updateUserDto);
       return await this.usersRepository.save(user);
     } catch (error) {
-      console.error(`Failed to update user:`, error);
-      throw error instanceof NotFoundException ? error : new Error('Could not update user');
+      Logger.error(`Failed to update user:`, error);
+      throw new HttpException('Could not update user', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -105,8 +108,8 @@ export class UsersService {
         throw new NotFoundException('User not found');
       }
     } catch (error) {
-      console.error(`Failed to delete user:`, error);
-      throw error instanceof NotFoundException ? error : new Error('Could not delete user');
+      Logger.error(`Failed to delete user:`, error);
+      throw new HttpException('Could not delete user', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -116,5 +119,16 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     return user;
+  }
+
+  async updateRefreshToken(userId: string, hashedRefreshToken: string): Promise<void> {
+    try {
+      const user = await this.ensureUserExists(userId);
+      user.refreshToken = hashedRefreshToken;
+      await this.usersRepository.save(user);
+    } catch (error) {
+      Logger.error(`Failed to update refresh token for user ${userId}:`, error);
+      throw new InternalServerErrorException('Could not update refresh token');
+    }
   }
 }
