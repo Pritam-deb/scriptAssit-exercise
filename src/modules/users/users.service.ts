@@ -117,4 +117,15 @@ export class UsersService {
     }
     return user;
   }
+
+  async updateRefreshToken(userId: string, hashedRefreshToken: string): Promise<void> {
+    try {
+      const user = await this.ensureUserExists(userId);
+      user.refreshToken = hashedRefreshToken;
+      await this.usersRepository.save(user);
+    } catch (error) {
+      console.error(`Failed to update refresh token for user ${userId}:`, error);
+      throw new InternalServerErrorException('Could not update refresh token');
+    }
+  }
 }
