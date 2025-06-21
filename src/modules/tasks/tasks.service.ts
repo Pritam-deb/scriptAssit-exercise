@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, LessThan, Not } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -8,15 +8,16 @@ import { TaskFilterDto } from './dto/task-filter.dto';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
-import { LessThan, Not } from 'typeorm';
+import { ITaskRepository } from './interfaces/task-repository.interface';
+import { ITaskQueueService } from './interfaces/task-queue.interface';
 
 @Injectable()
 export class TasksService {
   constructor(
-    @InjectRepository(Task)
-    private tasksRepository: Repository<Task>,
-    @InjectQueue('task-processing')
-    private taskQueue: Queue,
+    @Inject('ITaskRepository')
+    private readonly tasksRepository: ITaskRepository,
+    @Inject('ITaskQueueService')
+    private readonly taskQueueService: ITaskQueueService,
   ) { }
 
   async create(createTaskDto: CreateTaskDto): Promise<Task> {
@@ -27,10 +28,7 @@ export class TasksService {
       const task = await this.tasksRepository.create(createTaskDto);
       const savedTask = await queryRunner.manager.save(task);
 
-      await this.taskQueue.add('task-status-update', {
-        taskId: savedTask.id,
-        status: savedTask.status,
-      });
+      await this.taskQueueService.enqueueStatusUpdate(savedTask.id, savedTask.status);
 
       await queryRunner.commitTransaction();
       return savedTask;
@@ -149,10 +147,7 @@ export class TasksService {
       const updatedTask = await queryRunner.manager.save(task);
 
       if (originalStatus !== updatedTask.status) {
-        await this.taskQueue.add('task-status-update', {
-          taskId: updatedTask.id,
-          status: updatedTask.status,
-        });
+        await this.taskQueueService.enqueueStatusUpdate(updatedTask.id, updatedTask.status);
       }
 
       await queryRunner.commitTransaction();
@@ -179,11 +174,8 @@ export class TasksService {
       });
 
       await Promise.all(
-        updatedTasks.map(task =>
-          this.taskQueue.add('task-status-update', {
-            taskId: task.id,
-            status: task.status,
-          }),
+        updatedTasks.map((task: { id: string; status: string }) =>
+          this.taskQueueService.enqueueStatusUpdate(task.id, task.status),
         ),
       );
 
@@ -229,7 +221,7 @@ export class TasksService {
 
   async applyStatusUpdateFromQueue(id: string, status: string): Promise<Task> {
     await this.tasksRepository
-      .createQueryBuilder()
+      .createQueryBuilder('task')
       .update(Task)
       .set({ status: status as any })
       .where('id = :id', { id })
