@@ -4,6 +4,7 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
+import { retry } from '@common/utils/retry';
 
 @Injectable()
 export class AuthService {
@@ -15,7 +16,7 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    const user = await this.usersService.findByEmail(email);
+    const user = await retry(() => this.usersService.findByEmail(email));
 
     if (!user) {
       throw new UnauthorizedException('Invalid email');
@@ -35,7 +36,7 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload, { expiresIn: '30m' });
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '1d' });
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-    await this.usersService.updateRefreshToken(user.id, hashedRefreshToken);
+    await retry(() => this.usersService.updateRefreshToken(user.id, hashedRefreshToken));
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -48,13 +49,13 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
-    const existingUser = await this.usersService.findByEmail(registerDto.email);
+    const existingUser = await retry(() => this.usersService.findByEmail(registerDto.email));
 
     if (existingUser) {
       throw new UnauthorizedException('Email already exists');
     }
 
-    const user = await this.usersService.create(registerDto);
+    const user = await retry(() => this.usersService.create(registerDto));
 
     const token = this.generateToken(user.id);
 
@@ -75,7 +76,7 @@ export class AuthService {
   }
 
   async validateUser(userId: string): Promise<any> {
-    const user = await this.usersService.findOne(userId);
+    const user = await retry(() => this.usersService.findOne(userId));
 
     if (!user) {
       return null;
@@ -93,7 +94,7 @@ export class AuthService {
   ): Promise<{ access_token: string; refresh_token: string }> {
     try {
       const payload = this.jwtService.verify(refreshToken);
-      const user = await this.usersService.findOne(payload.sub);
+      const user = await retry(() => this.usersService.findOne(payload.sub));
 
       if (!user || !user.refreshToken) {
         throw new UnauthorizedException('Invalid token');
@@ -114,7 +115,7 @@ export class AuthService {
       const newRefreshToken = this.jwtService.sign(newPayload, { expiresIn: '1d' });
 
       const hashedNewRefreshToken = await bcrypt.hash(newRefreshToken, 10);
-      await this.usersService.updateRefreshToken(user.id, hashedNewRefreshToken);
+      await retry(() => this.usersService.updateRefreshToken(user.id, hashedNewRefreshToken));
 
       return {
         access_token: newAccessToken,

@@ -8,6 +8,18 @@ export class BullMqTaskQueueService implements ITaskQueueService {
     constructor(@InjectQueue('task-processing') private readonly queue: Queue) { }
 
     async enqueueStatusUpdate(taskId: string, status: string): Promise<void> {
-        await this.queue.add('task-status-update', { taskId, status });
+        await this.queue.add(
+            'task-status-update',
+            { taskId, status },
+            {
+                attempts: 5,
+                backoff: {
+                    type: 'exponential',
+                    delay: 10000,
+                },
+                removeOnComplete: true,
+                removeOnFail: 100,
+            },
+        );
     }
 }

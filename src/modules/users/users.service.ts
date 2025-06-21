@@ -14,6 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 import { IUserRepository } from './interfaces/user-repository.interface';
+import { retry } from '@common/utils/db.retry';
 
 @Injectable()
 export class UsersService {
@@ -24,13 +25,11 @@ export class UsersService {
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     try {
-      const [existingUser] = await Promise.all([
+      const existingUser = await retry(() =>
         this.usersRepository.findOne({ where: { email: createUserDto.email } }),
-        bcrypt.hash(createUserDto.password, 10),
-      ]).then(([user, hashed]) => {
-        createUserDto.password = hashed;
-        return [user];
-      });
+      );
+      const hashed = await bcrypt.hash(createUserDto.password, 10);
+      createUserDto.password = hashed;
 
       if (existingUser) {
         throw new Error('A user with this email already exists');
@@ -55,7 +54,7 @@ export class UsersService {
         query.where('user.createdAt < :afterCursor', { afterCursor });
       }
 
-      return await query.getMany();
+      return await retry(() => query.getMany());
     } catch (error) {
       Logger.error('Failed to retrieve users:', error);
       throw new InternalServerErrorException('Could not retrieve user list');
@@ -64,7 +63,7 @@ export class UsersService {
 
   async findOne(id: string): Promise<User> {
     try {
-      const user = await this.usersRepository.findOne({ where: { id } });
+      const user = await retry(() => this.usersRepository.findOne({ where: { id } }));
       if (!user) {
         throw new NotFoundException('User not found');
       }
@@ -77,7 +76,7 @@ export class UsersService {
 
   async findByEmail(email: string): Promise<User | null> {
     try {
-      return await this.usersRepository.findOne({ where: { email } });
+      return await retry(() => this.usersRepository.findOne({ where: { email } }));
     } catch (error) {
       Logger.error(`Failed to find user by email: ${email}`, error);
       throw new HttpException('Could not find user', HttpStatus.NOT_FOUND);
@@ -94,7 +93,7 @@ export class UsersService {
       }
 
       this.usersRepository.merge(user, updateUserDto);
-      return await this.usersRepository.save(user);
+      return await retry(() => this.usersRepository.save(user));
     } catch (error) {
       Logger.error(`Failed to update user:`, error);
       throw new HttpException('Could not update user', HttpStatus.INTERNAL_SERVER_ERROR);
@@ -103,7 +102,7 @@ export class UsersService {
 
   async remove(id: string): Promise<void> {
     try {
-      const result = await this.usersRepository.delete({ id });
+      const result = await retry(() => this.usersRepository.delete({ id }));
       if (result.affected === 0) {
         throw new NotFoundException('User not found');
       }
@@ -125,7 +124,7 @@ export class UsersService {
     try {
       const user = await this.ensureUserExists(userId);
       user.refreshToken = hashedRefreshToken;
-      await this.usersRepository.save(user);
+      await retry(() => this.usersRepository.save(user));
     } catch (error) {
       Logger.error(`Failed to update refresh token for user ${userId}:`, error);
       throw new InternalServerErrorException('Could not update refresh token');
