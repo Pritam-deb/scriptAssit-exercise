@@ -15,18 +15,19 @@ export class UsersService {
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     try {
-      const existingUser = await this.usersRepository.findOne({
-        where: { email: createUserDto.email },
+      const [existingUser] = await Promise.all([
+        this.usersRepository.findOne({ where: { email: createUserDto.email } }),
+        bcrypt.hash(createUserDto.password, 10),
+      ]).then(([user, hashed]) => {
+        createUserDto.password = hashed;
+        return [user];
       });
+
       if (existingUser) {
         throw new Error('A user with this email already exists');
       }
 
-      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-      const user = this.usersRepository.create({
-        ...createUserDto,
-        password: hashedPassword,
-      });
+      const user = this.usersRepository.create(createUserDto);
       return await this.usersRepository.save(user);
     } catch (error) {
       console.error('Failed to create user:', error);
@@ -79,7 +80,8 @@ export class UsersService {
       const user = await this.ensureUserExists(id);
 
       if (updateUserDto.password) {
-        updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+        const hashed = await bcrypt.hash(updateUserDto.password, 10);
+        updateUserDto.password = hashed;
       }
 
       this.usersRepository.merge(user, updateUserDto);

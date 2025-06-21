@@ -77,9 +77,9 @@ export class TasksController {
 
   @Get('stats')
   @ApiOperation({ summary: 'Get task statistics' })
-  async getStats() {
-
-    const statistics = await this.tasksService.getTaskStats();
+  async getStats(@Request() req: Request) {
+    const userId = (req as any).user.id;
+    const statistics = await this.tasksService.getTaskStats(userId);
     return statistics;
   }
 

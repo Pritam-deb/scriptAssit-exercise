@@ -104,8 +104,8 @@ export class TasksService {
       .getMany();
   }
 
-  async getTaskStats() {
-    return await this.tasksRepository
+  async getTaskStats(userId?: string): Promise<any> {
+    const query = this.tasksRepository
       .createQueryBuilder('task')
       .select([
         'COUNT(*) as total',
@@ -113,8 +113,13 @@ export class TasksService {
         `COUNT(*) FILTER (WHERE task.status = 'IN_PROGRESS') as inProgress`,
         `COUNT(*) FILTER (WHERE task.status = 'PENDING') as pending`,
         `COUNT(*) FILTER (WHERE task.priority = 'HIGH') as highPriority`,
-      ])
-      .getRawOne();
+      ]);
+
+    if (userId) {
+      query.where('task.userId = :userId', { userId });
+    }
+
+    return await query.getRawOne();
   }
 
   async findOne(id: string): Promise<Task> {
@@ -173,12 +178,14 @@ export class TasksService {
         relations: ['user'],
       });
 
-      for (const task of updatedTasks) {
-        await this.taskQueue.add('task-status-update', {
-          taskId: task.id,
-          status: task.status,
-        });
-      }
+      await Promise.all(
+        updatedTasks.map(task =>
+          this.taskQueue.add('task-status-update', {
+            taskId: task.id,
+            status: task.status,
+          }),
+        ),
+      );
 
       await queryRunner.commitTransaction();
       return updatedTasks;
