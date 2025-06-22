@@ -1,3 +1,3 @@
 export interface ITaskQueueService {
-    enqueueStatusUpdate(taskId: string, status: string): Promise<void>;
+  enqueueStatusUpdate(taskId: string, status: string): Promise<void>;
 }

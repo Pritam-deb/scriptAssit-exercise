@@ -13,7 +13,7 @@ import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
-import { IUserRepository } from './interfaces/user-repository.interface';
+import type { IUserRepository } from './interfaces/user-repository.interface';
 import { retry } from '@common/utils/retry';
 
 @Injectable()
