@@ -1,99 +1,98 @@
-import { Injectable } from '@nestjs/common';
-
-// Inefficient in-memory cache implementation with multiple problems:
-// 1. No distributed cache support (fails in multi-instance deployments)
-// 2. No memory limits or LRU eviction policy
-// 3. No automatic key expiration cleanup (memory leak)
-// 4. No serialization/deserialization handling for complex objects
-// 5. No namespacing to prevent key collisions
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Redis } from 'ioredis';
+import RedisLib from 'ioredis';
 
 @Injectable()
 export class CacheService {
-  // Using a simple object as cache storage
-  // Problem: Unbounded memory growth with no eviction
-  private cache: Record<string, { value: any; expiresAt: number }> = {};
+  private readonly logger = new Logger(CacheService.name);
+  private readonly redis: Redis;
+  private readonly prefix = 'app:';
 
-  // Inefficient set operation with no validation
-  async set(key: string, value: any, ttlSeconds = 300): Promise<void> {
-    // Problem: No key validation or sanitization
-    // Problem: Directly stores references without cloning (potential memory issues)
-    // Problem: No error handling for invalid values
-    
-    const expiresAt = Date.now() + ttlSeconds * 1000;
-    
-    // Problem: No namespacing for keys
-    this.cache[key] = {
-      value,
-      expiresAt,
-    };
-    
-    // Problem: No logging or monitoring of cache usage
+  constructor(configService: ConfigService) {
+    this.redis = new RedisLib({
+      host: configService.get<string>('REDIS_HOST'),
+      port: configService.get<number>('REDIS_PORT'),
+    });
   }
 
-  // Inefficient get operation that doesn't handle errors properly
+  private buildKey(key: string): string {
+    if (!key || typeof key !== 'string') {
+      throw new Error('Cache key must be a non-empty string.');
+    }
+    return `${this.prefix}${key}`;
+  }
+
+  async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+    const namespacedKey = this.buildKey(key);
+    try {
+      const payload = JSON.stringify(value);
+      if (ttlSeconds) {
+        await this.redis.set(namespacedKey, payload, 'EX', ttlSeconds);
+      } else {
+        await this.redis.set(namespacedKey, payload);
+      }
+      this.logger.debug(`Cache set: ${namespacedKey}`);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to cache: ${namespacedKey} - ${errorMsg}`);
+    }
+  }
+
   async get<T>(key: string): Promise<T | null> {
-    // Problem: No key validation
-    const item = this.cache[key];
-    
-    if (!item) {
+    const namespacedKey = this.buildKey(key);
+    try {
+      const raw = await this.redis.get(namespacedKey);
+      if (!raw) {
+        this.logger.debug(`Cache miss: ${namespacedKey}`);
+        return null;
+      }
+      this.logger.debug(`Cache hit: ${namespacedKey}`);
+      return JSON.parse(raw);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error fetching cache: ${namespacedKey} - ${errorMsg}`);
       return null;
     }
-    
-    // Problem: Checking expiration on every get (performance issue)
-    // Rather than having a background job to clean up expired items
-    if (item.expiresAt < Date.now()) {
-      // Problem: Inefficient immediate deletion during read operations
-      delete this.cache[key];
-      return null;
-    }
-    
-    // Problem: Returns direct object reference rather than cloning
-    // This can lead to unintended cache modifications when the returned
-    // object is modified by the caller
-    return item.value as T;
   }
 
-  // Inefficient delete operation
   async delete(key: string): Promise<boolean> {
-    // Problem: No validation or error handling
-    const exists = key in this.cache;
-    
-    // Problem: No logging of cache misses for monitoring
-    if (exists) {
-      delete this.cache[key];
-      return true;
+    const namespacedKey = this.buildKey(key);
+    try {
+      const result = await this.redis.del(namespacedKey);
+      const deleted = result > 0;
+      this.logger.debug(`${deleted ? 'Deleted' : 'Missed'} cache: ${namespacedKey}`);
+      return deleted;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error deleting cache: ${namespacedKey} - ${errorMsg}`);
+      return false;
     }
-    
-    return false;
   }
 
-  // Inefficient cache clearing
   async clear(): Promise<void> {
-    // Problem: Blocking operation that can cause performance issues
-    // on large caches
-    this.cache = {};
-    
-    // Problem: No notification or events when cache is cleared
+    try {
+      const keys = await this.redis.keys(`${this.prefix}*`);
+      if (keys.length > 0) {
+        await this.redis.del(keys);
+      }
+      this.logger.warn('Cache cleared');
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error clearing cache: ${errorMsg}`);
+    }
   }
 
-  // Inefficient method to check if a key exists
-  // Problem: Duplicates logic from the get method
   async has(key: string): Promise<boolean> {
-    const item = this.cache[key];
-    
-    if (!item) {
+    const namespacedKey = this.buildKey(key);
+    try {
+      const exists = await this.redis.exists(namespacedKey);
+      this.logger.debug(`Cache ${exists ? 'has' : 'missing'}: ${namespacedKey}`);
+      return exists === 1;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error checking cache key: ${namespacedKey} - ${errorMsg}`);
       return false;
     }
-    
-    // Problem: Repeating expiration logic instead of having a shared helper
-    if (item.expiresAt < Date.now()) {
-      delete this.cache[key];
-      return false;
-    }
-    
-    return true;
   }
-  
-  // Problem: Missing methods for bulk operations and cache statistics
-  // Problem: No monitoring or instrumentation
-} 
+}

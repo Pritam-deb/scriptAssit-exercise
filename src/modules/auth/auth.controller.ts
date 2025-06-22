@@ -11,6 +11,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -18,7 +19,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   @Post('login')
-  @Throttle({ default: { limit: 5, ttl: 60 } }) // Rate limit: 5 requests per minute
+  @RateLimit({ limit: 5, windowMs: 60 * 1000 })
   async login(@Body() loginDto: LoginDto) {
     try {
       return await this.authService.login(loginDto);

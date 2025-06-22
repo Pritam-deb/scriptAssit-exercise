@@ -10,6 +10,7 @@ import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
 import { ITaskRepository } from './interfaces/task-repository.interface';
 import { ITaskQueueService } from './interfaces/task-queue.interface';
+import { retry } from '@common/utils/retry';
 
 @Injectable()
 export class TasksService {
@@ -91,15 +92,17 @@ export class TasksService {
       });
     }
 
-    return await query.getMany();
+    return await retry(() => query.getMany());
   }
 
   async getAllTasks(): Promise<Task[]> {
-    return await this.tasksRepository
-      .createQueryBuilder('task')
-      .leftJoinAndSelect('task.user', 'user')
-      .orderBy('task.createdAt', 'DESC')
-      .getMany();
+    return await retry(() =>
+      this.tasksRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.user', 'user')
+        .orderBy('task.createdAt', 'DESC')
+        .getMany(),
+    );
   }
 
   async getTaskStats(userId?: string): Promise<any> {
@@ -117,11 +120,13 @@ export class TasksService {
       query.where('task.userId = :userId', { userId });
     }
 
-    return await query.getRawOne();
+    return await retry(() => query.getRawOne());
   }
 
   async findOne(id: string): Promise<Task> {
-    const task = await this.tasksRepository.findOne({ where: { id }, relations: ['user'] });
+    const task = await retry(() =>
+      this.tasksRepository.findOne({ where: { id }, relations: ['user'] }),
+    );
     if (!task) {
       throw new NotFoundException(`Task not found`);
     }
@@ -191,7 +196,7 @@ export class TasksService {
   }
 
   async remove(id: string): Promise<void> {
-    await this.tasksRepository.delete({ id });
+    await retry(() => this.tasksRepository.delete({ id }));
   }
 
   async bulkDelete(ids: string[]): Promise<void> {
@@ -211,12 +216,14 @@ export class TasksService {
   }
 
   async findByStatus(status: TaskStatus): Promise<Task[]> {
-    return await this.tasksRepository
-      .createQueryBuilder('task')
-      .leftJoinAndSelect('task.user', 'user')
-      .where('task.status = :status', { status })
-      .orderBy('task.createdAt', 'DESC')
-      .getMany();
+    return await retry(() =>
+      this.tasksRepository
+        .createQueryBuilder('task')
+        .leftJoinAndSelect('task.user', 'user')
+        .where('task.status = :status', { status })
+        .orderBy('task.createdAt', 'DESC')
+        .getMany(),
+    );
   }
 
   async applyStatusUpdateFromQueue(id: string, status: string): Promise<Task> {
@@ -233,19 +240,21 @@ export class TasksService {
   async getOverdueTasks(): Promise<Task[]> {
     try {
       const now = new Date();
-      return await this.tasksRepository.find({
-        where: {
-          dueDate: LessThan(now),
-          status: Not(TaskStatus.COMPLETED),
-        },
-        relations: ['user'],
-      });
+      return await retry(() =>
+        this.tasksRepository.find({
+          where: {
+            dueDate: LessThan(now),
+            status: Not(TaskStatus.COMPLETED),
+          },
+          relations: ['user'],
+        }),
+      );
     } catch (error) {
       Logger.error('Error fetching overdue tasks', error);
       throw new Error('Failed to fetch overdue tasks');
     }
   }
-  async notifyOverdueTasks(): Promise<void> {
+  async notifyOverdueTasks(task: Task): Promise<void> {
     const overdueTasks = await this.getOverdueTasks();
     if (overdueTasks.length > 0) {
       console.log(`Notifying about ${overdueTasks.length} overdue tasks.`);
