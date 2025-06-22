@@ -14,7 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 import { IUserRepository } from './interfaces/user-repository.interface';
-import { retry } from '@common/utils/db.retry';
+import { retry } from '@common/utils/retry';
 
 @Injectable()
 export class UsersService {

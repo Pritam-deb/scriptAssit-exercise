@@ -10,7 +10,7 @@ import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
 import { ITaskRepository } from './interfaces/task-repository.interface';
 import { ITaskQueueService } from './interfaces/task-queue.interface';
-import { retry } from '@common/utils/db.retry';
+import { retry } from '@common/utils/retry';
 
 @Injectable()
 export class TasksService {
@@ -254,7 +254,7 @@ export class TasksService {
       throw new Error('Failed to fetch overdue tasks');
     }
   }
-  async notifyOverdueTasks(): Promise<void> {
+  async notifyOverdueTasks(task: Task): Promise<void> {
     const overdueTasks = await this.getOverdueTasks();
     if (overdueTasks.length > 0) {
       console.log(`Notifying about ${overdueTasks.length} overdue tasks.`);

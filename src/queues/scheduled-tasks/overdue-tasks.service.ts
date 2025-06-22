@@ -52,7 +52,11 @@ export class OverdueTasksService {
           },
         );
       } catch (error) {
-        this.logger.error(`Failed to enqueue overdue task ${task.id}: ${error.message}`);
+        if (error instanceof Error) {
+          this.logger.error(`Failed to enqueue overdue task ${task.id}: ${error.message}`);
+        } else {
+          this.logger.error(`Failed to enqueue overdue task ${task.id}: ${JSON.stringify(error)}`);
+        }
       }
     }
 
