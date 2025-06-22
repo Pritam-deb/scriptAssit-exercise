@@ -27,6 +27,7 @@ import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { TaskFilterDto } from './dto/task-filter.dto';
 import { Throttle } from '@nestjs/throttler';
+import { Role } from '@modules/auth/enums/role.enum';
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -111,7 +112,7 @@ export class TasksController {
     }
 
     const { user } = req as any;
-    if (user.role !== 'admin' && task.user.id !== user.id) {
+    if (user.role !== Role.Admin && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 
@@ -133,7 +134,7 @@ export class TasksController {
     }
 
     const { user } = req as any;
-    if (user.role !== 'admin' && task.user.id !== user.id) {
+    if (user.role !== Role.Admin && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 
@@ -151,7 +152,7 @@ export class TasksController {
     }
 
     const { user } = req as any;
-    if (user.role !== 'admin' && task.user.id !== user.id) {
+    if (user.role !== Role.Admin && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 

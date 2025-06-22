@@ -51,7 +51,7 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
-          role: user.role,
+          role: user.role as string, // Ensure role is a string
         },
       };
     } catch (error) {
@@ -91,7 +91,7 @@ export class AuthService {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: user.role as string, // Ensure role is a string
         },
         token,
       };

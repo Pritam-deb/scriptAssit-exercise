@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, mock, jest } from 'bun:test';
 import { UsersService } from '../src/modules/users/users.service';
 import { NotFoundException } from '@nestjs/common';
+import { Role } from '@modules/auth/enums/role.enum';
 
 const mockUserRepo = {
   findOne: jest.fn(),
@@ -30,7 +31,7 @@ const sampleUser = {
   password: 'hashedpassword',
   refreshToken: '', // Changed from null to empty string to match type 'string'
   name: 'Test User',
-  role: 'user',
+  role: Role.User, // Use the enum for role
   tasks: [],
   createdAt: new Date(),
   updatedAt: new Date(),
