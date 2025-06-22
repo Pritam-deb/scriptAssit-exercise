@@ -13,6 +13,7 @@ import { CacheService } from './common/services/cache.service';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { RolesGuard } from '@common/guards/roles.guard';
+import { LoggerModule } from '@modules/logger/logger.module';
 
 @Module({
   imports: [
@@ -69,6 +70,9 @@ import { RolesGuard } from '@common/guards/roles.guard';
     UsersModule,
     TasksModule,
     AuthModule,
+
+    // Logging module
+    LoggerModule,
 
     // Queue processing modules
     TaskProcessorModule,
