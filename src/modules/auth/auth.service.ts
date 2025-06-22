@@ -16,58 +16,92 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    const user = await retry(() => this.usersService.findByEmail(email));
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid email');
+    if (!email || typeof email !== 'string') {
+      throw new UnauthorizedException('Email must be provided and be a string');
+    }
+    if (!password || typeof password !== 'string') {
+      throw new UnauthorizedException('Password must be provided and be a string');
     }
 
-    const passwordValid = await bcrypt.compare(password, user.password);
+    try {
+      const user = await retry(() => this.usersService.findByEmail(email));
 
-    if (!passwordValid) {
-      throw new UnauthorizedException('Invalid password');
-    }
+      if (!user) {
+        throw new UnauthorizedException('Invalid email or user does not exist');
+      }
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    };
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '30m' });
-    const refreshToken = this.jwtService.sign(payload, { expiresIn: '1d' });
-    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-    await retry(() => this.usersService.updateRefreshToken(user.id, hashedRefreshToken));
-    return {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      user: {
-        id: user.id,
+      const passwordValid = await bcrypt.compare(password, user.password);
+
+      if (!passwordValid) {
+        throw new UnauthorizedException('Invalid password');
+      }
+
+      const payload = {
+        sub: user.id,
         email: user.email,
         role: user.role,
-      },
-    };
+      };
+      const accessToken = this.jwtService.sign(payload, { expiresIn: '30m' });
+      const refreshToken = this.jwtService.sign(payload, { expiresIn: '1d' });
+      const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+      await retry(() => this.usersService.updateRefreshToken(user.id, hashedRefreshToken));
+      return {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+        },
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new UnauthorizedException(`Login failed: ${error.message}`);
+      } else {
+        throw new UnauthorizedException('Login failed: Unknown error');
+      }
+    }
   }
 
   async register(registerDto: RegisterDto) {
-    const existingUser = await retry(() => this.usersService.findByEmail(registerDto.email));
+    const { email } = registerDto;
 
-    if (existingUser) {
-      throw new UnauthorizedException('Email already exists');
+    if (!email || typeof email !== 'string') {
+      throw new UnauthorizedException('Email must be provided and be a string');
+    }
+    // Simple email regex validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      throw new UnauthorizedException('Invalid email format');
     }
 
-    const user = await retry(() => this.usersService.create(registerDto));
+    try {
+      const existingUser = await retry(() => this.usersService.findByEmail(email));
 
-    const token = this.generateToken(user.id);
+      if (existingUser) {
+        throw new UnauthorizedException('Email already exists');
+      }
 
-    return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-      token,
-    };
+      const user = await retry(() => this.usersService.create(registerDto));
+
+      const token = this.generateToken(user.id);
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+        token,
+      };
+    } catch (error) {
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      throw new UnauthorizedException(`Registration failed: ${errorMessage}`);
+    }
   }
 
   private generateToken(userId: string) {
@@ -76,33 +110,54 @@ export class AuthService {
   }
 
   async validateUser(userId: string): Promise<any> {
-    const user = await retry(() => this.usersService.findOne(userId));
+    try {
+      const user = await retry(() => this.usersService.findOne(userId));
 
-    if (!user) {
+      if (!user) {
+        return null;
+      }
+
+      return user;
+    } catch {
       return null;
     }
-
-    return user;
   }
 
   async validateUserRoles(userId: string, requiredRoles: string[]): Promise<boolean> {
-    return true;
+    if (!userId || !Array.isArray(requiredRoles) || requiredRoles.length === 0) {
+      return false;
+    }
+    try {
+      const user = await retry(() => this.usersService.findOne(userId));
+      if (!user || !user.role) {
+        return false;
+      }
+      return requiredRoles.includes(user.role);
+    } catch {
+      return false;
+    }
   }
 
   async refreshTokens(
     refreshToken: string,
   ): Promise<{ access_token: string; refresh_token: string }> {
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      throw new UnauthorizedException('Refresh token must be a non-empty string');
+    }
     try {
       const payload = this.jwtService.verify(refreshToken);
       const user = await retry(() => this.usersService.findOne(payload.sub));
 
-      if (!user || !user.refreshToken) {
-        throw new UnauthorizedException('Invalid token');
+      if (!user) {
+        throw new UnauthorizedException('User not found for provided token');
+      }
+      if (!user.refreshToken) {
+        throw new UnauthorizedException('No refresh token stored for user');
       }
 
       const isTokenMatching = await bcrypt.compare(refreshToken, user.refreshToken);
       if (!isTokenMatching) {
-        throw new UnauthorizedException('Refresh token mismatch');
+        throw new UnauthorizedException('Refresh token does not match stored token');
       }
 
       const newPayload = {
@@ -122,7 +177,11 @@ export class AuthService {
         refresh_token: newRefreshToken,
       };
     } catch (err) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
+      let errorMessage = 'Unknown error';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      throw new UnauthorizedException(`Invalid or expired refresh token: ${errorMessage}`);
     }
   }
 }

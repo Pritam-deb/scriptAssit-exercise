@@ -10,17 +10,16 @@ import {
   Query,
   HttpException,
   HttpStatus,
-  UseInterceptors,
   Request,
   NotFoundException,
+  UsePipes,
+  ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Task } from './entities/task.entity';
 import { TaskStatus } from './enums/task-status.enum';
 import { TaskPriority } from './enums/task-priority.enum';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
@@ -34,6 +33,7 @@ import { Throttle } from '@nestjs/throttler';
 @UseGuards(JwtAuthGuard, RateLimitGuard)
 @RateLimit({ limit: 100, windowMs: 60000 })
 @ApiBearerAuth()
+@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
 export class TasksController {
   constructor(private readonly tasksService: TasksService) { }
 
@@ -62,27 +62,40 @@ export class TasksController {
     @Query('cursor') cursor?: string,
     @Query('limit') limit?: number,
   ) {
-    const pageSize = Math.min(limit ? parseInt(limit as any, 10) : 10, 100);
-    const userId = (req as any).user.id;
-    const filter: TaskFilterDto = {
-      status: status as TaskStatus,
-      priority: priority as TaskPriority,
-    };
+    try {
+      const pageSize = limit ? parseInt(limit as any, 10) : 10;
+      if (isNaN(pageSize) || pageSize <= 0) {
+        throw new BadRequestException('Invalid pagination limit');
+      }
 
-    const tasks = await this.tasksService.findAll(userId, cursor, pageSize, filter);
+      const { id: userId } = (req as any).user;
+      const filter: TaskFilterDto = {
+        status: status as TaskStatus,
+        priority: priority as TaskPriority,
+      };
 
-    return {
-      data: tasks,
-      count: tasks.length,
-      limit: pageSize,
-    };
+      const tasks = await this.tasksService.findAll(
+        userId,
+        cursor,
+        Math.min(pageSize, 100),
+        filter,
+      );
+
+      return {
+        data: tasks,
+        count: tasks.length,
+        limit: pageSize,
+      };
+    } catch (error) {
+      throw new HttpException('Failed to retrieve tasks', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
   @Get('stats')
   @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Get task statistics' })
   async getStats(@Request() req: Request) {
-    const userId = (req as any).user.id;
+    const { id: userId } = (req as any).user;
     const statistics = await this.tasksService.getTaskStats(userId);
     return statistics;
   }
@@ -97,7 +110,8 @@ export class TasksController {
       throw new NotFoundException('Task not found');
     }
 
-    if ((req as any).user.role !== 'admin' && task.user.id !== (req as any).user.id) {
+    const { user } = req as any;
+    if (user.role !== 'admin' && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 
@@ -118,7 +132,8 @@ export class TasksController {
       throw new NotFoundException('Task not found');
     }
 
-    if ((req as any).user.role !== 'admin' && task.user.id !== (req as any).user.id) {
+    const { user } = req as any;
+    if (user.role !== 'admin' && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 
@@ -135,7 +150,8 @@ export class TasksController {
       throw new NotFoundException('Task not found');
     }
 
-    if ((req as any).user.role !== 'admin' && task.user.id !== (req as any).user.id) {
+    const { user } = req as any;
+    if (user.role !== 'admin' && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
 
@@ -151,6 +167,14 @@ export class TasksController {
   @ApiOperation({ summary: 'Batch process multiple tasks' })
   async batchProcess(@Body() operations: { tasks: string[]; action: string }) {
     const { tasks: taskIds, action } = operations;
+
+    if (!Array.isArray(taskIds) || taskIds.length === 0) {
+      throw new BadRequestException('No task IDs provided');
+    }
+
+    if (!['complete', 'delete'].includes(action)) {
+      throw new BadRequestException(`Unsupported action: ${action}`);
+    }
 
     try {
       let result;

@@ -15,6 +15,9 @@ import {
   Request,
   ForbiddenException,
   Logger,
+  UsePipes,
+  ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -28,13 +31,19 @@ import { Throttle } from '@nestjs/throttler';
 @ApiTags('users')
 @Controller('users')
 @UseInterceptors(ClassSerializerInterceptor)
+@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create a new user' })
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  async create(@Body() createUserDto: CreateUserDto) {
+    try {
+      return await this.usersService.create(createUserDto);
+    } catch (error) {
+      Logger.error('Failed to create user:', error);
+      throw new BadRequestException('User creation failed');
+    }
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -52,6 +61,9 @@ export class UsersController {
   async findAll(@Query('cursor') cursor?: string, @Query('limit') limit?: number) {
     try {
       const pageSize = limit ? parseInt(limit as any, 10) : 10;
+      if (isNaN(pageSize) || pageSize <= 0) {
+        throw new BadRequestException('Invalid pagination limit');
+      }
       return await this.usersService.findAll(pageSize, cursor);
     } catch (error) {
       Logger.error('Failed to retrieve users:', error);
@@ -92,7 +104,12 @@ export class UsersController {
       throw new ForbiddenException('You are not authorized to update this user');
     }
 
-    return this.usersService.update(id, updateUserDto);
+    try {
+      return await this.usersService.update(id, updateUserDto);
+    } catch (error) {
+      Logger.error(`Failed to update user ${id}:`, error);
+      throw new BadRequestException('User update failed');
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -110,6 +127,7 @@ export class UsersController {
         throw new ForbiddenException('You are not authorized to delete this user');
       }
       await this.usersService.remove(id);
+      Logger.log(`User ${id} deleted by ${req.user.id}`);
       return {
         statusCode: HttpStatus.OK,
         message: 'User deleted successfully',

@@ -5,6 +5,8 @@ import {
   UnauthorizedException,
   BadRequestException,
   Logger,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -15,16 +17,24 @@ import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
+@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   @Post('login')
   @RateLimit({ limit: 5, windowMs: 60 * 1000 })
   async login(@Body() loginDto: LoginDto) {
+    if (!loginDto.email || !loginDto.password) {
+      throw new BadRequestException('Email and password are required');
+    }
+
     try {
       return await this.authService.login(loginDto);
     } catch (error) {
       Logger.error('Login error:', error);
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid credentials');
     }
   }

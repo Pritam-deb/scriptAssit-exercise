@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, Logger, BadRequestException } from '@nestjs/common';
 import { In, LessThan, Not } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -19,6 +19,7 @@ export class TasksService {
   ) { }
 
   async create(createTaskDto: CreateTaskDto): Promise<Task> {
+    // Start a manual DB transaction for atomic task creation and queueing
     const queryRunner = this.tasksRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -26,7 +27,7 @@ export class TasksService {
       const task = await this.tasksRepository.create(createTaskDto);
       const savedTask = await queryRunner.manager.save(task);
 
-      await this.taskQueueService.enqueueStatusUpdate(savedTask.id, savedTask.status);
+      await retry(() => this.taskQueueService.enqueueStatusUpdate(savedTask.id, savedTask.status));
 
       await queryRunner.commitTransaction();
       return savedTask;
@@ -45,6 +46,11 @@ export class TasksService {
     pageSize: number,
     filter: TaskFilterDto,
   ): Promise<Task[]> {
+    if (!pageSize || pageSize <= 0) {
+      Logger.warn(`Invalid pageSize provided: ${pageSize}`);
+      return [];
+    }
+
     const whereClause: any = { user: { id: userId } };
 
     if (filter.status) whereClause.status = filter.status;
@@ -89,17 +95,27 @@ export class TasksService {
       });
     }
 
-    return await retry(() => query.getMany());
+    try {
+      return await retry(() => query.getMany());
+    } catch (err) {
+      Logger.error('Error fetching tasks in findAll:', err);
+      return [];
+    }
   }
 
   async getAllTasks(): Promise<Task[]> {
-    return await retry(() =>
-      this.tasksRepository
-        .createQueryBuilder('task')
-        .leftJoinAndSelect('task.user', 'user')
-        .orderBy('task.createdAt', 'DESC')
-        .getMany(),
-    );
+    try {
+      return await retry(() =>
+        this.tasksRepository
+          .createQueryBuilder('task')
+          .leftJoinAndSelect('task.user', 'user')
+          .orderBy('task.createdAt', 'DESC')
+          .getMany(),
+      );
+    } catch (err) {
+      Logger.error('Error fetching all tasks:', err);
+      return [];
+    }
   }
 
   async getTaskStats(userId?: string): Promise<any> {
@@ -117,20 +133,38 @@ export class TasksService {
       query.where('task.userId = :userId', { userId });
     }
 
-    return await retry(() => query.getRawOne());
+    try {
+      const rawResult = await retry(() => query.getRawOne());
+      return rawResult ?? { total: 0, completed: 0, inProgress: 0, pending: 0, highPriority: 0 };
+    } catch (err) {
+      Logger.error('Error fetching task stats:', err);
+      return { total: 0, completed: 0, inProgress: 0, pending: 0, highPriority: 0 };
+    }
   }
 
   async findOne(id: string): Promise<Task> {
-    const task = await retry(() =>
-      this.tasksRepository.findOne({ where: { id }, relations: ['user'] }),
-    );
-    if (!task) {
-      throw new NotFoundException(`Task not found`);
+    try {
+      const task = await retry(() =>
+        this.tasksRepository.findOne({ where: { id }, relations: ['user'] }),
+      );
+      if (!task) {
+        throw new NotFoundException(`Task not found`);
+      }
+      return task;
+    } catch (err) {
+      Logger.error(`Error finding task with id ${id}:`, err);
+      throw err;
     }
-    return task;
   }
 
   async update(id: string, updateTaskDto: UpdateTaskDto): Promise<Task> {
+    if (
+      updateTaskDto.status &&
+      !Object.values(TaskStatus).includes(updateTaskDto.status as TaskStatus)
+    ) {
+      throw new BadRequestException(`Invalid status value: ${updateTaskDto.status}`);
+    }
+
     const queryRunner = this.tasksRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -149,7 +183,9 @@ export class TasksService {
       const updatedTask = await queryRunner.manager.save(task);
 
       if (originalStatus !== updatedTask.status) {
-        await this.taskQueueService.enqueueStatusUpdate(updatedTask.id, updatedTask.status);
+        await retry(() =>
+          this.taskQueueService.enqueueStatusUpdate(updatedTask.id, updatedTask.status),
+        );
       }
 
       await queryRunner.commitTransaction();
@@ -164,6 +200,13 @@ export class TasksService {
   }
 
   async bulkUpdateStatus(ids: string[], status: string): Promise<Task[]> {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('IDs array must be non-empty');
+    }
+    if (!Object.values(TaskStatus).includes(status as TaskStatus)) {
+      throw new BadRequestException(`Invalid status value: ${status}`);
+    }
+
     const queryRunner = this.tasksRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -175,9 +218,11 @@ export class TasksService {
         relations: ['user'],
       });
 
-      await Promise.all(
-        updatedTasks.map((task: { id: string; status: string }) =>
-          this.taskQueueService.enqueueStatusUpdate(task.id, task.status),
+      await retry(() =>
+        Promise.all(
+          updatedTasks.map((task: { id: string; status: string }) =>
+            this.taskQueueService.enqueueStatusUpdate(task.id, task.status),
+          ),
         ),
       );
 
@@ -193,15 +238,30 @@ export class TasksService {
   }
 
   async remove(id: string): Promise<void> {
-    await retry(() => this.tasksRepository.delete({ id }));
+    try {
+      const deleteResult = await retry(() => this.tasksRepository.delete({ id }));
+      if (deleteResult.affected === 0) {
+        throw new NotFoundException(`Task not found for deletion`);
+      }
+    } catch (err) {
+      Logger.error(`Failed to delete task with id ${id}:`, err);
+      throw err;
+    }
   }
 
   async bulkDelete(ids: string[]): Promise<void> {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new BadRequestException('IDs array must be non-empty');
+    }
+
     const queryRunner = this.tasksRepository.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      await queryRunner.manager.delete(Task, ids);
+      const deleteResult = await queryRunner.manager.delete(Task, ids);
+      if (deleteResult.affected === 0) {
+        throw new NotFoundException('No tasks found for bulk deletion');
+      }
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -213,25 +273,39 @@ export class TasksService {
   }
 
   async findByStatus(status: TaskStatus): Promise<Task[]> {
-    return await retry(() =>
-      this.tasksRepository
-        .createQueryBuilder('task')
-        .leftJoinAndSelect('task.user', 'user')
-        .where('task.status = :status', { status })
-        .orderBy('task.createdAt', 'DESC')
-        .getMany(),
-    );
+    try {
+      return await retry(() =>
+        this.tasksRepository
+          .createQueryBuilder('task')
+          .leftJoinAndSelect('task.user', 'user')
+          .where('task.status = :status', { status })
+          .orderBy('task.createdAt', 'DESC')
+          .getMany(),
+      );
+    } catch (err) {
+      Logger.error(`Error fetching tasks by status ${status}:`, err);
+      return [];
+    }
   }
 
   async applyStatusUpdateFromQueue(id: string, status: string): Promise<Task> {
-    await this.tasksRepository
-      .createQueryBuilder('task')
-      .update(Task)
-      .set({ status: status as any })
-      .where('id = :id', { id })
-      .execute();
+    try {
+      const updateResult = await this.tasksRepository
+        .createQueryBuilder('task')
+        .update(Task)
+        .set({ status: status as any })
+        .where('id = :id', { id })
+        .execute();
 
-    return await this.findOne(id);
+      if (updateResult.affected === 0) {
+        throw new NotFoundException(`Task not found for status update from queue`);
+      }
+
+      return await this.findOne(id);
+    } catch (err) {
+      Logger.error(`Failed to apply status update from queue for task ${id}:`, err);
+      throw err;
+    }
   }
 
   async getOverdueTasks(): Promise<Task[]> {
@@ -252,11 +326,15 @@ export class TasksService {
     }
   }
   async notifyOverdueTasks(task: Task): Promise<void> {
-    const overdueTasks = await this.getOverdueTasks();
-    if (overdueTasks.length > 0) {
-      console.log(`Notifying about ${overdueTasks.length} overdue tasks.`);
+    // Log only if task is truly overdue and not already completed
+    if (!task) {
+      Logger.error('No task provided to notifyOverdueTasks');
+      return;
+    }
+    if (task.dueDate && task.dueDate < new Date() && task.status !== TaskStatus.COMPLETED) {
+      Logger.log(`Notifying about overdue task with id ${task.id} and title "${task.title}".`);
     } else {
-      Logger.error('No overdue tasks to notify.');
+      Logger.log(`Task with id ${task.id} is not overdue or already completed.`);
     }
   }
 }
