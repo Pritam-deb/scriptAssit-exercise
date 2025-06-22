@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Task } from '../../tasks/entities/task.entity';
 import { Exclude } from 'class-transformer';
+import { Role } from '../../auth/enums/role.enum';
 
 @Entity('users')
 export class User {
@@ -31,8 +32,12 @@ export class User {
   refreshToken: string;
 
   @Index()
-  @Column({ default: 'user' })
-  role: string;
+  @Column({
+    type: 'enum',
+    enum: Role,
+    default: Role.User, // Use the enum
+  })
+  role: Role;
 
   @OneToMany(() => Task, task => task.user)
   tasks: Task[];

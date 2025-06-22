@@ -5,6 +5,7 @@ import { TaskStatus } from '../src/modules/tasks/enums/task-status.enum';
 import { TaskPriority } from '../src/modules/tasks/enums/task-priority.enum';
 import { ITaskRepository } from '../src/modules/tasks/interfaces/task-repository.interface';
 import { ITaskQueueService } from '../src/modules/tasks/interfaces/task-queue.interface';
+import { Role } from '@modules/auth/enums/role.enum';
 const mockTaskRepo = {
   manager: {
     connection: {
@@ -63,7 +64,7 @@ const taskExample = {
     name: 'User One',
     password: 'hashedpassword',
     refreshToken: 'sometoken',
-    role: 'user',
+    role: Role.User,
     createdAt: new Date(),
     updatedAt: new Date(),
     tasks: [],

@@ -27,6 +27,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { Roles } from '@common/decorators/roles.decorator';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { Throttle } from '@nestjs/throttler';
+import { Role } from '@modules/auth/enums/role.enum';
 
 @ApiTags('users')
 @Controller('users')
@@ -47,7 +48,7 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @Roles(Role.Admin)
   @ApiBearerAuth()
   @Get()
   @Throttle({ default: { limit: 5, ttl: 10 } })
@@ -82,7 +83,7 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
-    if (req.user.role !== 'admin' && req.user.id !== id) {
+    if (req.user.role !== Role.Admin && req.user.id !== id) {
       throw new ForbiddenException('You are not authorized to access this user');
     }
 
@@ -100,7 +101,7 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
-    if (req.user.role !== 'admin' && req.user.id !== id) {
+    if (req.user.role !== Role.Admin && req.user.id !== id) {
       throw new ForbiddenException('You are not authorized to update this user');
     }
 
@@ -115,6 +116,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Delete(':id')
+  @Roles(Role.Admin)
   @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Delete a user' })
   async remove(@Param('id') id: string, @Request() req: any) {
@@ -122,9 +124,6 @@ export class UsersController {
       const user = await this.usersService.findOne(id);
       if (!user) {
         throw new NotFoundException('User not found');
-      }
-      if (req.user.role !== 'admin' && req.user.id !== id) {
-        throw new ForbiddenException('You are not authorized to delete this user');
       }
       await this.usersService.remove(id);
       Logger.log(`User ${id} deleted by ${req.user.id}`);
