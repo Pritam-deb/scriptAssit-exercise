@@ -1,14 +1,23 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionFilter } from '@common/filters/global-exception.filter';
+import { RateLimitGuard } from '@common/guards/rate-limit.guard';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
+  const reflector = new Reflector();
   // Global exception filter
   app.useGlobalFilters(new AllExceptionFilter());
+
+  // Global rate limiter guard
+  const throttlerGuard = app.get(ThrottlerGuard);
+  app.useGlobalGuards(
+    throttlerGuard,
+    new RateLimitGuard(reflector), // Custom rate limit guard
+  );
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -40,4 +49,4 @@ async function bootstrap() {
   console.log(`Application running on: http://localhost:${port}`);
   console.log(`Swagger documentation: http://localhost:${port}/api`);
 }
-bootstrap(); 
+bootstrap();
