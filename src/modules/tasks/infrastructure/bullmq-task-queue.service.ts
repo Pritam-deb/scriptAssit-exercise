@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { ITaskQueueService } from '../interfaces/task-queue.interface';
 
@@ -23,7 +23,7 @@ export class BullMqTaskQueueService implements ITaskQueueService {
         },
       );
     } catch (error) {
-      console.warn(
+      Logger.warn(
         `Failed to enqueue task-status-update for task ${taskId}:`,
         error instanceof Error ? error.message : error,
       );
