@@ -4,7 +4,7 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
-import { retry } from '@common/utils/retry';
+import { retry } from '../../common/utils/db.retry';
 
 @Injectable()
 export class AuthService {

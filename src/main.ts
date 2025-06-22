@@ -4,7 +4,6 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionFilter } from '@common/filters/global-exception.filter';
 import { RateLimitGuard } from '@common/guards/rate-limit.guard';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,9 +12,7 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionFilter());
 
   // Global rate limiter guard
-  const throttlerGuard = app.get(ThrottlerGuard);
   app.useGlobalGuards(
-    throttlerGuard,
     new RateLimitGuard(reflector), // Custom rate limit guard
   );
 
