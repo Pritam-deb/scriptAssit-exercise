@@ -10,10 +10,15 @@ export class CacheService {
   private readonly prefix = 'app:';
 
   constructor(configService: ConfigService) {
-    this.redis = new RedisLib({
-      host: configService.get<string>('REDIS_HOST'),
-      port: configService.get<number>('REDIS_PORT'),
-    });
+    try {
+      this.redis = new RedisLib({
+        host: configService.get<string>('REDIS_HOST'),
+        port: configService.get<number>('REDIS_PORT'),
+      });
+    } catch (err) {
+      this.logger.error('Redis connection failed. Cache operations will be skipped.', err);
+      this.redis = null as any;
+    }
   }
 
   private buildKey(key: string): string {
@@ -24,6 +29,10 @@ export class CacheService {
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+    if (!this.redis) {
+      this.logger.warn(`Skipping cache set: Redis unavailable for key ${key}`);
+      return;
+    }
     const namespacedKey = this.buildKey(key);
     try {
       const payload = JSON.stringify(value);
@@ -40,6 +49,10 @@ export class CacheService {
   }
 
   async get<T>(key: string): Promise<T | null> {
+    if (!this.redis) {
+      this.logger.warn(`Skipping cache get: Redis unavailable for key ${key}`);
+      return null;
+    }
     const namespacedKey = this.buildKey(key);
     try {
       const raw = await this.redis.get(namespacedKey);
@@ -57,6 +70,10 @@ export class CacheService {
   }
 
   async delete(key: string): Promise<boolean> {
+    if (!this.redis) {
+      this.logger.warn(`Skipping cache delete: Redis unavailable for key ${key}`);
+      return false;
+    }
     const namespacedKey = this.buildKey(key);
     try {
       const result = await this.redis.del(namespacedKey);
@@ -71,6 +88,10 @@ export class CacheService {
   }
 
   async clear(): Promise<void> {
+    if (!this.redis) {
+      this.logger.warn('Skipping cache clear: Redis unavailable');
+      return;
+    }
     try {
       const keys = await this.redis.keys(`${this.prefix}*`);
       if (keys.length > 0) {
@@ -84,6 +105,10 @@ export class CacheService {
   }
 
   async has(key: string): Promise<boolean> {
+    if (!this.redis) {
+      this.logger.warn(`Skipping cache has check: Redis unavailable for key ${key}`);
+      return false;
+    }
     const namespacedKey = this.buildKey(key);
     try {
       const exists = await this.redis.exists(namespacedKey);

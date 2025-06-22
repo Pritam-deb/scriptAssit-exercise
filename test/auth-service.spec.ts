@@ -14,16 +14,12 @@ mock.module('../users/users.service', () => ({
   UsersService: class MockUsersService { },
 }));
 
-// Mock the bcrypt library
+// Mocking the bcrypt library
 mock.module('bcrypt', () => ({
-  // Use jest.fn() for mocking functions
   compare: jest.fn(),
   hash: jest.fn(),
 }));
 
-// Mock the custom retry utility
-// Note: If you have a __mocks__ folder, Bun should pick it up automatically.
-// If it doesn't, mocking it explicitly like this is a reliable alternative.
 mock.module('../src/common/utils/retry', () => ({
   retry: jest.fn((fn: () => any) => fn()),
 }));
@@ -265,8 +261,6 @@ describe('AuthService', () => {
   // --- validateUserRoles Test ---
   describe('validateUserRoles', () => {
     it('should always return true', async () => {
-      // This test is simple as the method is hardcoded to return true.
-      // It should be updated if the logic changes.
       const result = await service.validateUserRoles('some-user-id', ['admin']);
       expect(result).toBe(true);
     });
