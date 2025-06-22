@@ -1,270 +1,103 @@
 # TaskFlow API - Senior Backend Engineer Coding Challenge
 
-## Introduction
+This repository contains my submission for the **Senior Backend Engineer coding challenge**. The primary objective was to analyze an existing NestJS codebase, identify architectural weaknesses and performance bottlenecks, and refactor it into a production-ready, scalable, and secure application.
 
-Welcome to the TaskFlow API coding challenge! This project is designed to evaluate the skills of experienced backend engineers in identifying and solving complex architectural problems using our technology stack.
+---
 
-The TaskFlow API is a task management system with significant scalability, performance, and security challenges that need to be addressed. The codebase contains intentional anti-patterns and inefficiencies that require thoughtful refactoring and architectural improvements.
+## 🧠 1. Analysis of Core Problems
 
-## Tech Stack
+Upon reviewing the initial codebase, I identified several key areas needing immediate attention, as outlined in the evaluation guide:
 
-- **Language**: TypeScript
-- **Framework**: NestJS
-- **ORM**: TypeORM with PostgreSQL
-- **Queue System**: BullMQ with Redis
-- **API Style**: REST with JSON
-- **Package Manager**: Bun
-- **Testing**: Bun test
+### ⚡ Performance & Scalability
 
-## Getting Started
+- Potential **N+1 query problems**
+- Inefficient filtering logic relying on in-memory processing
 
-### Prerequisites
+### 🏗️ Architectural Weaknesses
 
-- Node.js (v16+)
-- Bun (latest version)
-- PostgreSQL
-- Redis
+- Poor separation of concerns between application logic and data access
+- Multi-step operations lacked proper transaction management
 
-### Setup Instructions
+### 🔁 Reliability & Resilience
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   bun install
-   ```
-3. Configure environment variables by copying `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   # Update the .env file with your database and Redis connection details
-   ```
-4. Database Setup:
+- Missing robust error handling for distributed systems (e.g., job queueing)
+- External service connections (e.g., Redis) were inconsistently managed
 
-   Ensure your PostgreSQL database is running, then create a database:
+### 🔒 Security
 
-   ```bash
-   # Using psql
-   psql -U postgres
-   CREATE DATABASE taskflow;
-   \q
+- Authorization logic was not scalable
+- Some modules bypassed centralized configuration, leading to potential security and performance issues
 
-   # Or using createdb
-   createdb -U postgres taskflow
-   ```
+---
 
-   Build the TypeScript files to ensure the migrations can be run:
+## 🏛️ 2. Architectural Approach & Key Decisions
 
-   ```bash
-   bun run build
-   ```
+To address these challenges, I applied several architectural improvements and patterns:
 
-5. Run database migrations:
+### A. Decoupled Architecture with the Repository Pattern
 
-   ```bash
-   # Option 1: Standard migration (if "No migrations are pending" but tables aren't created)
-   bun run migration:run
+- **Interfaces for DI**: Defined contracts such as `ITaskRepository` and `IUserRepository`
+- **Infrastructure Layer**: TypeORM implementations are placed under an `infrastructure/` directory (e.g., `TypeOrmTaskRepository`)
+- **Benefits**:
+  - Decouples business logic from the ORM
+  - Improves testability and maintainability
+  - Future-proofing (e.g., ability to swap ORM)
 
-   # Option 2: Force table creation with our custom script
-   bun run migration:custom
-   ```
+### B. Efficient Database Operations
 
-   Our custom migration script will:
+- **Scalable Filtering**: All listing methods (e.g., `TasksService.findAll`) use `createQueryBuilder` to push filtering, sorting, and pagination to the database
+- **Atomic Transactions**: Critical multi-step operations (e.g., creating a task + enqueueing a job) use manual transactions with `queryRunner` to maintain data integrity
 
-   - Try to run formal migrations first
-   - If no migrations are executed, it will directly create the necessary tables
-   - It provides detailed logging to help troubleshoot database setup issues
+### C. Resilient Background & Scheduled Jobs
 
-6. Seed the database with initial data:
+- **BullMQ for Background Jobs**:
+  - Used for non-critical operations (e.g., task status updates)
+  - Jobs configured with exponential backoff retries for fault tolerance
+- **Scheduled Tasks**:
+  - `OverdueTasksService` uses `@Cron` via `@nestjs/schedule`
+  - Periodically checks for overdue tasks and processes them via background jobs
 
-   ```bash
-   bun run seed
-   ```
+### D. Centralized and Lifecycle-Aware Configuration
 
-7. Start the redis server:
+- **Config Management**:
+  - All environment variables and service configs handled via `@nestjs/config` and `.env`
+- **Async Module Initialization**:
+  - Used `forRootAsync` for `TypeOrmModule` and `BullModule` to avoid race conditions during service startup
 
-   ```bash
-   brew services start redis
-   ```
+---
 
-8. Start the development server:
-   ```bash
-   bun run start:dev
-   ```
+## 📘 3. API and Documentation
 
-### Troubleshooting Database Issues
+- **Base URL**: `http://localhost:3000`
+- **Swagger Documentation**: Available at [`http://localhost:3000/api`](http://localhost:3000/api)
 
-If you continue to have issues with database connections:
+---
 
-1. Check that PostgreSQL is properly installed and running:
+## 🔮 4. Future Improvements & Trade-offs
 
-   ```bash
-   # On Linux/Mac
-   systemctl status postgresql
-   # or
-   pg_isready
+### 🛡️ Security Guards
 
-   # On Windows
-   sc query postgresql
-   ```
+- **RateLimitGuard**:
+  - Could be replaced or refactored to integrate with `@nestjs/throttler` using Redis-backed storage
 
-2. Verify your database credentials by connecting manually:
+### 🧠 Caching
 
-   ```bash
-   psql -h localhost -U postgres -d taskflow
-   ```
+- **CacheService**:
+  - Current custom implementation created Redis clients too early (before env loading, which was causing issue with docker container)
+  - Thinking of replacing with `@nestjs/cache-manager` + `cache-manager-redis-store`
 
-3. If needed, manually create the schema from the migration files:
-   - Look at the SQL in `src/database/migrations/`
-   - Execute the SQL manually in your database
+### ✅ Testing
 
-### Default Users
+- **Expand test coverage**:
+  - Add more **E2E tests** to cover request/response cycles
+  - Increase **unit tests** at controller level
 
-The seeded database includes two users:
+---
 
-1. Admin User:
+## 🚀 Summary
 
-   - Email: admin@example.com
-   - Password: admin123
-   - Role: admin
+This refactor transforms the original codebase into a robust, maintainable, and scalable production-grade application. The improvements ensure efficient database usage, clear architectural boundaries, and enhanced operational resilience.
 
-2. Regular User:
-   - Email: user@example.com
-   - Password: user123
-   - Role: user
+---
 
-## Challenge Overview
-
-This codebase contains a partially implemented task management API that suffers from various architectural, performance, and security issues. Your task is to analyze, refactor, and enhance the codebase to create a production-ready, scalable, and secure application.
-
-## Core Problem Areas
-
-The codebase has been intentionally implemented with several critical issues that need to be addressed:
-
-### 1. Performance & Scalability Issues
-
-- N+1 query problems throughout the application
-- Inefficient in-memory filtering and pagination that won't scale
-- Excessive database roundtrips in batch operations
-- Poorly optimized data access patterns
-
-### 2. Architectural Weaknesses
-
-- Inappropriate separation of concerns (e.g., controllers directly using repositories)
-- Missing domain abstractions and service boundaries
-- Lack of transaction management for multi-step operations
-- Tightly coupled components with high interdependency
-
-### 3. Security Vulnerabilities
-
-- Inadequate authentication mechanism with several vulnerabilities
-- Improper authorization checks that can be bypassed
-- Unprotected sensitive data exposure in error responses
-- Insecure rate limiting implementation
-
-### 4. Reliability & Resilience Gaps
-
-- Ineffective error handling strategies
-- Missing retry mechanisms for distributed operations
-- Lack of graceful degradation capabilities
-- In-memory caching that fails in distributed environments
-
-## Implementation Requirements
-
-Your implementation should address the following areas:
-
-### 1. Performance Optimization
-
-- Implement efficient database query strategies with proper joins and eager loading
-- Create a performant filtering and pagination system
-- Optimize batch operations with bulk database operations
-- Add appropriate indexing strategies
-
-### 2. Architectural Improvements
-
-- Implement proper domain separation and service abstractions
-- Create a consistent transaction management strategy
-- Apply SOLID principles throughout the codebase
-- Implement at least one advanced pattern (e.g., CQRS, Event Sourcing)
-
-### 3. Security Enhancements
-
-- Strengthen authentication with refresh token rotation
-- Implement proper authorization checks at multiple levels
-- Create a secure rate limiting system
-- Add data validation and sanitization
-
-### 4. Resilience & Observability
-
-- Implement comprehensive error handling and recovery mechanisms
-- Add proper logging with contextual information
-- Create meaningful health checks
-- Implement at least one observability pattern
-
-## Advanced Challenge Areas
-
-For senior engineers, we expect solutions to also address:
-
-### 1. Distributed Systems Design
-
-- Create solutions that work correctly in multi-instance deployments
-- Implement proper distributed caching with invalidation strategies
-- Handle concurrent operations safely
-- Design for horizontal scaling
-
-### 2. System Reliability
-
-- Implement circuit breakers for external service calls
-- Create graceful degradation pathways for non-critical features
-- Add self-healing mechanisms
-- Design fault isolation boundaries
-
-### 3. Performance Under Load
-
-- Optimize for high throughput scenarios
-- Implement backpressure mechanisms
-- Create efficient resource utilization strategies
-- Design for predictable performance under varying loads
-
-## Evaluation Criteria
-
-Your solution will be evaluated on:
-
-1. **Problem Analysis**: How well you identify and prioritize the core issues
-2. **Technical Implementation**: The quality and cleanliness of your code
-3. **Architectural Thinking**: Your approach to solving complex design problems
-4. **Performance Improvements**: Measurable enhancements to system performance
-5. **Security Awareness**: Your identification and remediation of vulnerabilities
-6. **Testing Strategy**: The comprehensiveness of your test coverage
-7. **Documentation**: The clarity of your explanation of key decisions
-
-## Submission Guidelines
-
-1. Fork this repository to your own GitHub account
-2. Make regular, meaningful commits that tell a story
-3. Create a comprehensive README.md in your forked repository containing:
-   - Analysis of the core problems you identified
-   - Overview of your architectural approach
-   - Performance and security improvements made
-   - Key technical decisions and their rationale
-   - Any tradeoffs you made and why
-4. Ensure your repository is public so we can review your work
-5. Submit the link to your public GitHub repository
-
-## API Endpoints
-
-The API should expose the following endpoints:
-
-### Authentication
-
-- `POST /auth/login` - Authenticate a user
-- `POST /auth/register` - Register a new user
-
-### Tasks
-
-- `GET /tasks` - List tasks with filtering and pagination
-- `GET /tasks/:id` - Get task details
-- `POST /tasks` - Create a task
-- `PATCH /tasks/:id` - Update a task
-- `DELETE /tasks/:id` - Delete a task
-- `POST /tasks/batch` - Batch operations on tasks
-
-Good luck! This challenge is designed to test the skills of experienced engineers in creating scalable, maintainable, and secure systems.
+Thank you for reviewing this submission!
