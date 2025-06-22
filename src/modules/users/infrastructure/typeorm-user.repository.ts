@@ -7,44 +7,44 @@ import { IUserRepository } from '../interfaces/user-repository.interface';
 
 @Injectable()
 export class TypeOrmUserRepository implements IUserRepository {
-    constructor(
-        @InjectRepository(User)
-        private readonly repository: Repository<User>,
-    ) { }
+  constructor(
+    @InjectRepository(User)
+    private readonly repository: Repository<User>,
+  ) { }
 
-    findOne(options: any): Promise<User | null> {
-        return this.repository.findOne(options);
+  findOne(options: any): Promise<User | null> {
+    return this.repository.findOne(options);
+  }
+
+  findAll(limit: number, afterCursor?: string): Promise<User[]> {
+    const query = this.repository
+      .createQueryBuilder('user')
+      .orderBy('user.createdAt', 'DESC')
+      .limit(limit);
+
+    if (afterCursor) {
+      query.where('user.createdAt < :afterCursor', { afterCursor });
     }
 
-    findAll(limit: number, afterCursor?: string): Promise<User[]> {
-        const query = this.repository
-            .createQueryBuilder('user')
-            .orderBy('user.createdAt', 'DESC')
-            .limit(limit);
+    return query.getMany();
+  }
 
-        if (afterCursor) {
-            query.where('user.createdAt < :afterCursor', { afterCursor });
-        }
+  create(createUserDto: CreateUserDto): User {
+    return this.repository.create(createUserDto);
+  }
 
-        return query.getMany();
-    }
+  save(user: User): Promise<User> {
+    return this.repository.save(user);
+  }
 
-    create(createUserDto: CreateUserDto): User {
-        return this.repository.create(createUserDto);
-    }
+  delete(criteria: any): Promise<any> {
+    return this.repository.delete(criteria);
+  }
 
-    save(user: User): Promise<User> {
-        return this.repository.save(user);
-    }
-
-    delete(criteria: any): Promise<any> {
-        return this.repository.delete(criteria);
-    }
-
-    createQueryBuilder(alias: string) {
-        return this.repository.createQueryBuilder(alias);
-    }
-    merge(user: User, updateUserDto: any): User {
-        return this.repository.merge(user, updateUserDto);
-    }
+  createQueryBuilder(alias: string) {
+    return this.repository.createQueryBuilder(alias);
+  }
+  merge(user: User, updateUserDto: any): User {
+    return this.repository.merge(user, updateUserDto);
+  }
 }

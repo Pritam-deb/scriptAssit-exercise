@@ -1,15 +1,12 @@
 import { Injectable, NotFoundException, Inject, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, LessThan, Not } from 'typeorm';
+import { In, LessThan, Not } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TaskFilterDto } from './dto/task-filter.dto';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { TaskStatus } from './enums/task-status.enum';
-import { ITaskRepository } from './interfaces/task-repository.interface';
-import { ITaskQueueService } from './interfaces/task-queue.interface';
+import type { ITaskRepository } from './interfaces/task-repository.interface';
+import type { ITaskQueueService } from './interfaces/task-queue.interface';
 import { retry } from '@common/utils/retry';
 
 @Injectable()
