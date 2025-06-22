@@ -16,33 +16,46 @@ export class OverdueTasksService {
     private taskQueue: Queue,
     @InjectRepository(Task)
     private tasksRepository: Repository<Task>,
-  ) {}
+  ) { }
 
-  // TODO: Implement the overdue tasks checker
-  // This method should run every hour and check for overdue tasks
   @Cron(CronExpression.EVERY_HOUR)
   async checkOverdueTasks() {
     this.logger.debug('Checking for overdue tasks...');
-    
-    // TODO: Implement overdue tasks checking logic
-    // 1. Find all tasks that are overdue (due date is in the past)
-    // 2. Add them to the task processing queue
-    // 3. Log the number of overdue tasks found
-    
-    // Example implementation (incomplete - to be implemented by candidates)
+
     const now = new Date();
-    const overdueTasks = await this.tasksRepository.find({
-      where: {
-        dueDate: LessThan(now),
-        status: TaskStatus.PENDING,
-      },
-    });
-    
+    const batchSize = 100;
+
+    const overdueTasks = await this.tasksRepository
+      .createQueryBuilder('task')
+      .where('task.dueDate < :now', { now })
+      .andWhere('task.status IN (:...statuses)', {
+        statuses: [TaskStatus.PENDING, TaskStatus.IN_PROGRESS],
+      })
+      .limit(batchSize)
+      .getMany();
+
+    if (overdueTasks.length === 0) {
+      this.logger.debug('No overdue tasks found.');
+      return;
+    }
+
     this.logger.log(`Found ${overdueTasks.length} overdue tasks`);
-    
-    // Add tasks to the queue to be processed
-    // TODO: Implement adding tasks to the queue
-    
+    this.logger.debug(`Overdue Task IDs: ${overdueTasks.map(t => t.id).join(', ')}`);
+
+    for (const task of overdueTasks) {
+      try {
+        await this.taskQueue.add(
+          'process-overdue-task',
+          { taskId: task.id },
+          {
+            jobId: `overdue:${task.id}`,
+          },
+        );
+      } catch (error) {
+        this.logger.error(`Failed to enqueue overdue task ${task.id}: ${error.message}`);
+      }
+    }
+
     this.logger.debug('Overdue tasks check completed');
   }
-} 
+}
