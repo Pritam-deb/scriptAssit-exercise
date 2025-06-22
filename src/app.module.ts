@@ -44,12 +44,28 @@ import { ThrottlerGuard } from '@nestjs/throttler';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get('REDIS_HOST'),
-          port: configService.get('REDIS_PORT'),
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const redisHost = configService.get<string>('REDIS_HOST');
+        const redisPort = configService.get<number>('REDIS_PORT');
+
+        // =================================================================
+        // THE DEBUGGING CODE IS ADDED HERE
+        console.log('--- BULLMQ/REDIS CONFIGURATION ---');
+        console.log(`[DEBUG] Host read from env: ${redisHost}`);
+        console.log(`[DEBUG] Port read from env: ${redisPort}`);
+        console.log('------------------------------------');
+        // =================================================================
+
+        if (!redisHost) {
+          throw new Error('REDIS_HOST environment variable not set for BullMQ!');
+        }
+        return {
+          connection: {
+            host: configService.get('REDIS_HOST'),
+            port: configService.get('REDIS_PORT'),
+          },
+        };
+      },
     }),
 
     // Rate limiting
