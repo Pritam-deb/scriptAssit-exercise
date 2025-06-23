@@ -15,6 +15,7 @@ import {
   UsePipes,
   ValidationPipe,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -28,6 +29,7 @@ import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { TaskFilterDto } from './dto/task-filter.dto';
 import { Throttle } from '@nestjs/throttler';
 import { Role } from '@modules/auth/enums/role.enum';
+import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 
 @ApiTags('tasks')
 @Controller('tasks')
@@ -41,7 +43,11 @@ export class TasksController {
   @Post()
   @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Create a new task' })
-  create(@Body() createTaskDto: CreateTaskDto) {
+  create(@Body() createTaskDto: CreateTaskDto, @CurrentUser() user: any) {
+    if (createTaskDto.userId && createTaskDto.userId !== user.id && user.role !== Role.Admin) {
+      throw new ForbiddenException('You are not allowed to create task for another user');
+    }
+
     return this.tasksService.create(createTaskDto);
   }
 
@@ -104,14 +110,13 @@ export class TasksController {
   @Get(':id')
   @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Find a task by ID' })
-  async findOne(@Param('id') id: string, @Request() req: Request) {
+  async findOne(@Param('id') id: string, @CurrentUser() user: any) {
     const task = await this.tasksService.findOne(id);
 
     if (!task) {
       throw new NotFoundException('Task not found');
     }
 
-    const { user } = req as any;
     if (user.role !== Role.Admin && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
@@ -125,15 +130,13 @@ export class TasksController {
   async update(
     @Param('id') id: string,
     @Body() updateTaskDto: UpdateTaskDto,
-    @Request() req: Request,
+    @CurrentUser() user: any,
   ) {
     const task = await this.tasksService.findOne(id);
 
     if (!task) {
       throw new NotFoundException('Task not found');
     }
-
-    const { user } = req as any;
     if (user.role !== Role.Admin && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
@@ -144,14 +147,15 @@ export class TasksController {
   @Delete(':id')
   @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Delete a task' })
-  async remove(@Param('id') id: string, @Request() req: Request) {
+  async remove(@Param('id') id: string, @CurrentUser() user: any) {
     const task = await this.tasksService.findOne(id);
 
     if (!task) {
       throw new NotFoundException('Task not found');
     }
-
-    const { user } = req as any;
+    if (!user || !user.id) {
+      throw new BadRequestException('User not authenticated');
+    }
     if (user.role !== Role.Admin && task.user.id !== user.id) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
@@ -166,8 +170,15 @@ export class TasksController {
   @Post('batch')
   @Throttle({ default: { limit: 5, ttl: 10 } })
   @ApiOperation({ summary: 'Batch process multiple tasks' })
-  async batchProcess(@Body() operations: { tasks: string[]; action: string }) {
+  async batchProcess(
+    @Body() operations: { tasks: string[]; action: string },
+    @CurrentUser() user: any,
+  ) {
     const { tasks: taskIds, action } = operations;
+
+    if (!user || !user.id) {
+      throw new BadRequestException('User not authenticated');
+    }
 
     if (!Array.isArray(taskIds) || taskIds.length === 0) {
       throw new BadRequestException('No task IDs provided');
